@@ -22,8 +22,8 @@ jobs:
       - name: Install packages & setup
         run: |
           sudo apt update -y   
-          sudo apt install libncurses5-dev libtinfo5 -y    
-          sudo apt-get install python2 libtinfo5  
+          sudo apt install libncurses5-dev libtinfo6  -y    
+          sudo apt-get install python2 libtinfo6   
           bash init_clang_13.sh
           
       - name: Set environment variable
