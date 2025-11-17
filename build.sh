@@ -2,7 +2,7 @@
 set -x
 
 RDIR="$(pwd)"
-export KBUILD_BUILD_USER="@ravindu644"
+export KBUILD_BUILD_USER="@papaL3xa"
 
 #init ksu next
 git submodule init && git submodule update
@@ -31,7 +31,7 @@ if [ -z "$BUILD_KERNEL_VERSION" ]; then
 fi
 
 #setting up localversion
-echo -e "CONFIG_LOCALVERSION_AUTO=n\nCONFIG_LOCALVERSION=\"-ravindu644-${BUILD_KERNEL_VERSION}\"\n" > "${RDIR}/arch/arm64/configs/version.config"
+echo -e "CONFIG_LOCALVERSION_AUTO=n\nCONFIG_LOCALVERSION=\"-smurf-${BUILD_KERNEL_VERSION}\"\n" > "${RDIR}/arch/arm64/configs/version.config"
 
 #path for binary files
 export dt_tool="$RDIR/binaries"
