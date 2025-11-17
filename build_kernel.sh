@@ -221,53 +221,48 @@ build_ksu(){
 
     # === Begin of core ===
 
-    ksu_core(){
+    dtb_img() {
+        sudo chmod +777 $dt_tool/* -R
+        $dt_tool/mkdtimg cfg_create "$work_dir/out/dt.img" "$dt_tool/exynos9825.cfg" -d "$work_dir/arch/arm64/boot/dts/exynos"
+    }
 
-        dtb_img() {
-            sudo chmod +777 $dt_tool/* -R
-            $dt_tool/mkdtimg cfg_create "$work_dir/out/dt.img" "$dt_tool/exynos9825.cfg" -d "$work_dir/arch/arm64/boot/dts/exynos"
-        }
+    #check if the build succeed
+    checks_ksu() {
+    if [ -f "$dt_tool/AIK/split_img/boot.img-kernel" ]; then
+        echo -e "\n\n[i] Task Finished ! \n"
+        packing_ksu
+    else
+        echo -e "\n\n[i] Build Failed :( \n"
+        exit 1
+    fi
+    }
 
-        #check if the build succeed
-        checks_ksu() {
-        if [ -f "$dt_tool/AIK/split_img/boot.img-kernel" ]; then
-            echo -e "\n\n[i] Task Finished ! \n"
-            packing_ksu
-        else
-            echo -e "\n\n[i] Build Failed :( \n"
-            exit 1
+    #packing process
+    packing_ksu() {
+        echo -e "\n\n[+] Repacking boot.img..."
+        cd "$dt_tool/AIK/ramdisk"
+        if [ ! -d "debug_ramdisk" ]; then
+            mkdir -p debug_ramdisk dev metadata mnt proc second_stage_resources sys
         fi
-        }
+        cd "$work_dir"
+        sudo bash "$repacker"
+        sudo chmod +777 "$dt_tool/AIK" -R
+        echo -e "\n\n[+] Repacking Done..!"
+        mv "$dt_tool/AIK/image-new.img" "$work_dir/out/boot.img"
+        echo -e "\n\n[i] Creating a Flashable tar..!"
 
-        #packing process
-        packing_ksu() {
-            echo -e "\n\n[+] Repacking boot.img..."
-            cd "$dt_tool/AIK/ramdisk"
-            if [ ! -d "debug_ramdisk" ]; then
-                mkdir -p debug_ramdisk dev metadata mnt proc second_stage_resources sys
-            fi
-            cd "$work_dir"
-            sudo bash "$repacker"
-            sudo chmod +777 "$dt_tool/AIK" -R
-            echo -e "\n\n[+] Repacking Done..!"
-            mv "$dt_tool/AIK/image-new.img" "$work_dir/out/boot.img"
-            echo -e "\n\n[i] Creating a Flashable tar..!"
+        cd "$work_dir/out"
 
-            cd "$work_dir/out"
-
-            if [ ! -d "${DEVICE}-KSU" ]; then
-                mkdir "${DEVICE}-KSU"
-            fi
-            if [ ! -d "${DEVICE}-KSU/${SELINUX_STATUS}" ]; then
-                mkdir "${DEVICE}-KSU/${SELINUX_STATUS}"
-            fi
-            cp "${VBMETA}" .
-            sudo chmod +777 *
-            tar -cvf "LPoS ${LPOS_KERNEL_VERSION} [KSU] [${DEVICE}] - ${SELINUX_STATUS}.tar" boot.img dt.img vbmeta.img ; rm boot.img dt.img vbmeta.img
-            mv "LPoS ${LPOS_KERNEL_VERSION} [KSU] [${DEVICE}] - ${SELINUX_STATUS}.tar" "${DEVICE}-KSU/${SELINUX_STATUS}"
-            }
-
-        #==== end of core ====
+        if [ ! -d "${DEVICE}-KSU" ]; then
+            mkdir "${DEVICE}-KSU"
+        fi
+        if [ ! -d "${DEVICE}-KSU/${SELINUX_STATUS}" ]; then
+            mkdir "${DEVICE}-KSU/${SELINUX_STATUS}"
+        fi
+        cp "${VBMETA}" .
+        sudo chmod +777 *
+        tar -cvf "LPoS ${LPOS_KERNEL_VERSION} [KSU] [${DEVICE}] - ${SELINUX_STATUS}.tar" boot.img dt.img vbmeta.img ; rm boot.img dt.img vbmeta.img
+        mv "LPoS ${LPOS_KERNEL_VERSION} [KSU] [${DEVICE}] - ${SELINUX_STATUS}.tar" "${DEVICE}-KSU/${SELINUX_STATUS}"
     }
 
     tar_xz_ksu() {
@@ -278,14 +273,32 @@ build_ksu(){
         echo -e "\n\n[i] KSU Compilation Done..🌛\n"
     }
 
+    # Clone and setup KernelSU-next
+    setup_kernelsu_next() {
+        cd "$work_dir"
+        
+        # Remove existing KernelSU directory if exists
+        if [ -d "KernelSU-Next" ]; then
+            rm -rf KernelSU-Next
+        fi
+        
+        # Clone kernelsu-next
+        git clone https://github.com/GoRhanHee/KernelSU-Next.git
+        
+        # Move to proper location
+        mv KernelSU-Next KernelSU-Next
+        
+    }
+
     lets_build_kernelsu(){
+        # Setup kernelsu-next first
+        setup_kernelsu_next
+        
         #compiling enforcing
         ksu_enforce
-        ksu_core
         build_enforce
         #compiling permissive
         ksu_permissive
-        ksu_core
         build_permissive
         #packing all
         tar_xz_ksu
@@ -306,8 +319,8 @@ elif [ "$USER_INPUT" == "-x" ]; then
     echo -e "\n\n[i] Cleaning the source...\n\n"
     deep_clean 
 elif [ "$USER_INPUT" == "-k" ]; then
-    echo -e "\n\n[i] Building KernelSU...\n\n"
+    echo -e "\n\n[i] Building KernelSU with kernelsu-next...\n\n"
     build_ksu       
 else
-    echo -e "\n\n[x] Wrong Input..! \n\n [i] Usage : \n\n To a Clean build : build_kernel.sh -c\n To a dirty build : build_kernel.sh -d \n To Clean the source : build_kernel.sh -x\n To Build KernelSU : build_kernel.sh -k"
+    echo -e "\n\n[x] Wrong Input..! \n\n [i] Usage : \n\n To a Clean build : build_kernel.sh -c\n To a dirty build : build_kernel.sh -d \n To Clean the source : build_kernel.sh -x\n To Build KernelSU (kernelsu-next) : build_kernel.sh -k"
 fi
