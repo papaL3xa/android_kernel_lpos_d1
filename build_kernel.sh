@@ -149,12 +149,6 @@ clean_build() {
     make ${ARGS} clean && make ${ARGS} mrproper
     lpos_defaults
 
-    #patching allowlist for non-gki
-    if [ ! -f ".allowlist_patched" ]; then
-        patch -p1 < "$work_dir/ksu.patch"
-        echo "1" > ".allowlist_patched"
-    fi
-
     make ${ARGS} "$exynos_defconfig"
     make ${ARGS} -j"$(nproc)" || exit
     dtb_img
