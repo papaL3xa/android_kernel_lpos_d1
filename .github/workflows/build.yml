@@ -21,9 +21,9 @@ jobs:
 
       - name: Install packages & setup
         run: |
-          sudo apt update -y   
-          sudo apt install libncurses5-dev libtinfo6  -y    
-          sudo apt-get install python2 libtinfo6   
+          sudo apt update -y  
+          sudo apt install libncurses5-dev -y
+          wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb   
           bash init_clang_13.sh
           
       - name: Set environment variable
