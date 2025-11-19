@@ -1,4 +1,3 @@
-
 name: build and release
 
 on:
@@ -23,38 +22,110 @@ jobs:
       - name: Install packages & setup
         run: |
           sudo apt update -y  
-          sudo apt install libncurses5-dev python3 libtinfo5 -y      
+          sudo apt install -y \
+            build-essential \
+            libncurses5-dev \
+            python3 \
+            python2 \
+            git \
+            wget \
+            curl \
+            tar \
+            xz-utils \
+            unzip \
+            rsync \
+            bc \
+            libssl-dev \
+            libelf-dev \
+            flex \
+            bison
+
+      - name: Setup Python 2.7 symlink
+        run: |
+          sudo ln -sf /usr/bin/python2.7 /usr/bin/python2 || true
+          which python2 || echo "Python2 not available"
+
+      - name: Initialize toolchain
+        run: |
+          chmod +x init_clang_13.sh
           bash init_clang_13.sh
-          
+
       - name: Set environment variable
         run: |
           echo "LPOS_KERNEL_VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
+          echo "WORKSPACE=$(pwd)" >> $GITHUB_ENV
           
+      - name: Setup environment paths
+        run: |
+          echo "PATH=$HOME/bin:$PWD/toolchain/bin:$PWD/clang/bin:$PATH" >> $GITHUB_ENV
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CROSS_COMPILE=aarch64-linux-gnu-" >> $GITHUB_ENV
+
+      - name: Verify toolchain
+        run: |
+          export PATH=$HOME/bin:$PWD/toolchain/bin:$PWD/clang/bin:$PATH
+          echo "=== Toolchain Verification ==="
+          which clang || echo "Clang not found"
+          which aarch64-linux-gnu-gcc || echo "aarch64-linux-gnu-gcc not found"
+          which ld.lld || echo "ld.lld not found"
+          ls -la toolchain/bin/ | head -10
+          ls -la clang/bin/ | head -10
+
       - name: Building LPoS
         run: |
-          export PATH=$HOME/:$PWD/toolchain/bin:$PATH
+          export PATH=$HOME/bin:$PWD/toolchain/bin:$PWD/clang/bin:$PATH
+          export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          echo "=== Building Standard LPoS ==="
           bash build_kernel.sh -c
 
       - name: Building LPoS + KernelSU
         run: |
-          export PATH=$HOME/:$PWD/toolchain/bin:$PATH
-          bash build_kernel.sh -k          
+          export PATH=$HOME/bin:$PWD/toolchain/bin:$PWD/clang/bin:$PATH
+          export CC=clang
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          echo "=== Building LPoS with KernelSU ==="
+          bash build_kernel.sh -k
 
-      - name: Upload kernel
+      - name: List build artifacts
+        run: |
+          echo "=== Build Artifacts ==="
+          find out/ -type f -name "*.zip" | head -10
+          ls -la out/ || echo "out/ directory not found"
+          ls -la || echo "Current directory listing"
+
+      - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: "LPoS-${{ env.LPOS_KERNEL_VERSION }}-[S10 5G]"
+          name: "LPoS-${{ env.LPOS_KERNEL_VERSION }}-[Note10]"
           path: |
             out/LPoS*.zip
             out/KSU*.zip
+            out/*.zip
+          retention-days: 7
 
       - name: Create release
+        if: success()
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.event.inputs.tag }}
           name: "LPoS Kernel ${{ env.LPOS_KERNEL_VERSION }}"
           draft: false
           prerelease: false
-          token: ${{ secrets.TOKEN }}          
-          artifacts: "out/LPoS*.zip,out/KSU*.zip"
-          body: "Commit SHA: ${{ github.sha }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: "out/LPoS*.zip,out/KSU*.zip,out/*.zip"
+          body: |
+            ## LPoS Kernel ${{ github.event.inputs.tag }}
+            
+            **Build Information:**
+            - Commit: ${{ github.sha }}
+            - Build Date: ${{ fromJSON(format('"{0}"', fromJSON(format('"{0}"', '0')))) }}
+            - Workflow: ${{ github.workflow }}
+            
+            **Artifacts:**
+            - Standard Kernel (Enforcing + Permissive)
+            - KernelSU Version (Enforcing + Permissive)
+            
+            **Device:** Note 10
+            **Architecture:** arm64
+          allowUpdates: true
