@@ -36,6 +36,9 @@ export DEVICE="N10"
 export SOC="exynos9825"
 export DEFCONFIG=exynos9820-d1_defconfig
 
+# submodule
+git submodule init && git submodule update --remote
+
 #symlinking python3
 if [ ! -f "$HOME/python" ]; then
     ln -s /usr/bin/python3 "$HOME/python"
