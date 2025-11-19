@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # Configuration variables
 KERNEL_NAME="LPoS"
-KERNEL_VERSION="v8.6.2-stable"
+KERNEL_VERSION="v1.0.0-stable"
 DEVICE="Note 10"
 BUILD_DIR="${PWD}"
 OUT_DIR="${BUILD_DIR}/out"
