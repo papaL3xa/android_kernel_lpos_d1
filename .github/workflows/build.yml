@@ -53,6 +53,11 @@ jobs:
       - name: setting permission
         run: chmod +x build_kernel.sh
 
+      - name: Building LPoS + KernelSU
+        run: |
+          export PATH=$PWD/toolchain/bin:$PATH
+          bash build_kernel.sh -k
+          
       - name: Building LPoS
         run: |
           export PATH=$PWD/toolchain/bin:$PATH
