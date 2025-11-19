@@ -109,24 +109,24 @@ setup_toolchain() {
     print_success "Toolchain setup completed"
 }
 
-# Fix for missing clang-android.sh
+# Fix for missing init_clang_13.sh
 fix_clang_android_script() {
-    print_step "Checking for clang-android.sh..."
+    print_step "Checking for init_clang_13.sh..."
     
-    if [ ! -f "./scripts/clang-android.sh" ]; then
-        print_warning "clang-android.sh not found, creating compatibility workaround..."
+    if [ ! -f "./scripts/init_clang_13.sh" ]; then
+        print_warning "init_clang_13.sh not found, creating compatibility workaround..."
         
-        # Create a simple clang-android.sh wrapper
-        cat > ./scripts/clang-android.sh << 'EOF'
+        # Create a simple init_clang_13.sh wrapper
+        cat > ./scripts/init_clang_13.sh << 'EOF'
 #!/bin/bash
-# Compatibility wrapper for clang-android.sh
+# Compatibility wrapper for init_clang_13.sh
 exec clang "$@"
 EOF
         
-        chmod +x ./scripts/clang-android.sh
-        print_info "Created clang-android.sh compatibility wrapper"
+        chmod +x ./scripts/init_clang_13.sh
+        print_info "Created init_clang_13.sh compatibility wrapper"
     else
-        print_info "clang-android.sh already exists"
+        print_info "init_clang_13.sh already exists"
     fi
 }
 
@@ -149,8 +149,8 @@ initialize_build() {
     # Create output directory
     mkdir -p "$OUT_DIR"
     
-    # Fix clang-android.sh issue
-    fix_clang_android_script
+    # Fix init_clang_13.sh issue
+    fix_init_clang_13_script
     
     # Setup toolchain
     if ! setup_toolchain; then
