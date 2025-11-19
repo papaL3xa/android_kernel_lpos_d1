@@ -1,3 +1,4 @@
+
 name: build and release
 
 on:
@@ -22,8 +23,7 @@ jobs:
       - name: Install packages & setup
         run: |
           sudo apt update -y  
-          sudo apt install libncurses5-dev -y
-          wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb   
+          sudo apt install libncurses5-dev python2 libtinfo5 -y      
           bash init_clang_13.sh
           
       - name: Set environment variable
@@ -43,7 +43,7 @@ jobs:
       - name: Upload kernel
         uses: actions/upload-artifact@v4
         with:
-          name: "LPoS-${{ env.LPOS_KERNEL_VERSION }}-[Note 10]"
+          name: "LPoS-${{ env.LPOS_KERNEL_VERSION }}-[S10 5G]"
           path: |
             out/LPoS*.zip
             out/KSU*.zip
@@ -58,22 +58,3 @@ jobs:
           token: ${{ secrets.TOKEN }}          
           artifacts: "out/LPoS*.zip,out/KSU*.zip"
           body: "Commit SHA: ${{ github.sha }}"
-
-      - name: Upload to Telegram
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          document: "out/LPoS*.zip,out/KSU*.zip"
-          format: html
-          disable_web_page_preview: false
-          message: |
-            <b>New Kernel Build found..! 🎉</b>
-
-            <b>Device :</b> Note 10 (d1)  
-            <b>Kernel Version :</b> ${{ env.LPOS_KERNEL_VERSION }}                    
-            <b>Repository:</b> <a href="https://github.com/${{ github.repository }}">${{ github.repository }}</a>
-            
-            <b>Commit SHA:</b> <a href="https://github.com/${{ github.repository }}/commit/${{github.sha}}">Click here</a>
-            
-            <b>Installation :</b> <a href="https://telegra.ph/LPoS-Kernel-Installation-Guide-02-09">Click here</a>          
