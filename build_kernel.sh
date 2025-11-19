@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Enhanced Android Kernel Build Script for LPOS D1
-# Enhanced version with better error handling and organization
+# Fixed version for toolchain and build issues
 
 set -e
 
@@ -24,15 +24,32 @@ ARCH="arm64"
 PLATFORM_VERSION=12
 ANDROID_MAJOR_VERSION=s
 
-# Toolchain and binary paths
-export PATH="${BUILD_DIR}/toolchain/bin:${PATH}"
+# Toolchain configuration - FIXED: Use proper toolchain
+TOOLCHAIN_DIR="${BUILD_DIR}/toolchain"
+CLANG_DIR="${BUILD_DIR}/clang"
+
+# Export paths
+export PATH="${TOOLCHAIN_DIR}/bin:${CLANG_DIR}/bin:${PATH}"
+
+# Build arguments - FIXED: Simplified for compatibility
+export AR="llvm-ar"
+export NM="llvm-nm"
+export OBJCOPY="llvm-objcopy"
+export OBJDUMP="llvm-objdump"
+export STRIP="llvm-strip"
+export CC="clang"
+export LD="ld.lld"
+export ARCH="arm64"
+export CROSS_COMPILE="aarch64-linux-gnu-"
+export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
+export CLANG_TRIPLE="aarch64-linux-gnu-"
+export LLVM=1
+
+# Binary paths
 export work_dir="${BUILD_DIR}"
 export dt_tool="${work_dir}/binaries"
 export repacker="${dt_tool}/AIK/repackimg.sh"
 export VBMETA="${dt_tool}/addons/vbmeta.img"
-
-# Build arguments
-export ARGS="CC=clang LD=ld.lld ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- AR=llvm-ar NM=llvm-nm AS=llvm-as READELF=llvm-readelf OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump OBJSIZE=llvm-size STRIP=llvm-strip LLVM_AR=llvm-ar LLVM_DIS=llvm-dis LLVM_NM=llvm-nm LLVM=1"
 
 # Defconfig
 export exynos_defconfig="exynos9820-d1_defconfig"
@@ -41,7 +58,6 @@ export config_file="arch/arm64/configs/${exynos_defconfig}"
 # Build information
 export current_datetime=$(date +"%Y-%m-%d_%H-%M-%S")
 export KBUILD_BUILD_USER="@ravindu644"
-export LLVM=1
 
 # Function to print colored output
 print_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
@@ -50,17 +66,81 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 print_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 print_success() { echo -e "${CYAN}[SUCCESS]${NC} $1"; }
 
+# Check and setup toolchain
+setup_toolchain() {
+    print_step "Setting up toolchain..."
+    
+    # Check if toolchain exists
+    if [ ! -d "$TOOLCHAIN_DIR" ]; then
+        print_error "Toolchain not found at: $TOOLCHAIN_DIR"
+        print_info "Please ensure toolchain is properly set up"
+        print_info "Expected structure:"
+        echo "  $TOOLCHAIN_DIR/bin/aarch64-linux-gnu-gcc"
+        echo "  $CLANG_DIR/bin/clang"
+        return 1
+    fi
+    
+    # Check for essential binaries
+    local missing_tools=()
+    
+    if ! command -v aarch64-linux-gnu-gcc &> /dev/null; then
+        missing_tools+=("aarch64-linux-gnu-gcc")
+    fi
+    
+    if ! command -v clang &> /dev/null; then
+        missing_tools+=("clang")
+    fi
+    
+    if ! command -v ld.lld &> /dev/null; then
+        missing_tools+=("ld.lld")
+    fi
+    
+    if [ ${#missing_tools[@]} -ne 0 ]; then
+        print_error "Missing tools: ${missing_tools[*]}"
+        print_info "Please check your toolchain installation"
+        return 1
+    fi
+    
+    print_info "Toolchain version info:"
+    aarch64-linux-gnu-gcc --version | head -1
+    clang --version | head -1
+    ld.lld --version | head -1
+    
+    print_success "Toolchain setup completed"
+}
+
+# Fix for missing clang-android.sh
+fix_clang_android_script() {
+    print_step "Checking for clang-android.sh..."
+    
+    if [ ! -f "./scripts/clang-android.sh" ]; then
+        print_warning "clang-android.sh not found, creating compatibility workaround..."
+        
+        # Create a simple clang-android.sh wrapper
+        cat > ./scripts/clang-android.sh << 'EOF'
+#!/bin/bash
+# Compatibility wrapper for clang-android.sh
+exec clang "$@"
+EOF
+        
+        chmod +x ./scripts/clang-android.sh
+        print_info "Created clang-android.sh compatibility wrapper"
+    else
+        print_info "clang-android.sh already exists"
+    fi
+}
+
 # Initialize build environment
 initialize_build() {
     print_step "Initializing build environment..."
     
     # Create symbolic link for python
-    if [ ! -L "$HOME/python" ]; then
+    if [ ! -L "$HOME/python" ] && [ -f "/usr/bin/python2.7" ]; then
         ln -sf /usr/bin/python2.7 "$HOME/python"
         print_info "Created Python symbolic link"
     fi
     
-    # Set executable permissions
+    # Set executable permissions for binaries
     if [ -d "$dt_tool" ]; then
         chmod +775 -R "$dt_tool/"
         print_info "Set executable permissions for binaries"
@@ -69,11 +149,13 @@ initialize_build() {
     # Create output directory
     mkdir -p "$OUT_DIR"
     
-    # Verify toolchain
-    if ! command -v aarch64-linux-gnu-gcc &> /dev/null; then
-        print_error "Toolchain not found in PATH"
-        print_info "Please ensure toolchain is properly set up"
-        exit 1
+    # Fix clang-android.sh issue
+    fix_clang_android_script
+    
+    # Setup toolchain
+    if ! setup_toolchain; then
+        print_error "Toolchain setup failed"
+        return 1
     fi
     
     print_success "Build environment initialized"
@@ -107,9 +189,15 @@ dtb_img() {
 # Packing function
 packing() {
     local selinux_status="$1"
-    local ksu_enabled="$2"
+    local ksu_enabled="${2:-n}"
     
     print_step "Repacking boot image (SELinux: $selinux_status, KSU: $ksu_enabled)..."
+    
+    # Check if AIK directory exists
+    if [ ! -d "$dt_tool/AIK" ]; then
+        print_error "AIK directory not found: $dt_tool/AIK"
+        return 1
+    fi
     
     # Prepare AIK directory
     cd "$dt_tool/AIK/ramdisk"
@@ -125,7 +213,12 @@ packing() {
     fi
     
     # Move and create flashable files
-    mv "$dt_tool/AIK/image-new.img" "$OUT_DIR/boot.img"
+    if [ -f "$dt_tool/AIK/image-new.img" ]; then
+        mv "$dt_tool/AIK/image-new.img" "$OUT_DIR/boot.img"
+    else
+        print_error "Repacked image not found"
+        return 1
+    fi
     
     # Create device-specific directory structure
     local device_dir="$DEVICE"
@@ -135,7 +228,13 @@ packing() {
     
     cd "$OUT_DIR"
     mkdir -p "$device_dir/$selinux_status"
-    cp "$VBMETA" .
+    
+    if [ -f "$VBMETA" ]; then
+        cp "$VBMETA" .
+    else
+        print_warning "vbmeta.img not found, continuing without it"
+        touch vbmeta.img
+    fi
     
     chmod +777 *
     
@@ -168,7 +267,20 @@ create_flashable_zip() {
     
     zip_name+=".zip"
     
-    if zip -r -9 "$zip_name" "$DEVICE"*; then
+    # Find device directories to zip
+    local device_dirs=()
+    for dir in "$DEVICE"*; do
+        if [ -d "$dir" ]; then
+            device_dirs+=("$dir")
+        fi
+    done
+    
+    if [ ${#device_dirs[@]} -eq 0 ]; then
+        print_error "No device directories found to zip"
+        return 1
+    fi
+    
+    if zip -r -9 "$zip_name" "${device_dirs[@]}"; then
         mv "$zip_name" "${zip_name%.zip}-${current_datetime}.zip"
         print_success "ZIP package created: ${zip_name%.zip}-${current_datetime}.zip"
     else
@@ -202,10 +314,10 @@ lpos_defaults() {
     replace_config_option "CONFIG_SECURITY_SELINUX_ALWAYS_PERMISSIVE" "n"
 }
 
-# Build kernel
+# Build kernel with better error handling
 build_kernel() {
     local selinux_mode="$1"
-    local ksu_mode="$2"
+    local ksu_mode="${2:-n}"
     
     print_step "Building kernel (SELinux: $selinux_mode, KSU: $ksu_mode)..."
     
@@ -213,9 +325,20 @@ build_kernel() {
     replace_config_option "CONFIG_SECURITY_SELINUX_ALWAYS_PERMISSIVE" "$selinux_mode"
     replace_config_option "CONFIG_KSU" "$ksu_mode"
     
-    # Build kernel
-    make ${ARGS} "$exynos_defconfig"
-    if make ${ARGS} -j"$(nproc)"; then
+    # Clean configuration state
+    print_info "Preparing kernel configuration..."
+    make ARCH="$ARCH" distclean 2>/dev/null || true
+    make ARCH="$ARCH" mrproper 2>/dev/null || true
+    
+    # Build kernel with simplified approach
+    print_info "Running defconfig..."
+    if ! make ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" "$exynos_defconfig"; then
+        print_error "Failed to run defconfig"
+        return 1
+    fi
+    
+    print_info "Compiling kernel..."
+    if make ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" LD="$LD" -j"$(nproc)"; then
         print_success "Kernel built successfully"
     else
         print_error "Kernel build failed"
@@ -223,14 +346,17 @@ build_kernel() {
     fi
     
     # Generate DTB
-    dtb_img
+    if ! dtb_img; then
+        print_error "DTB generation failed"
+        return 1
+    fi
     
     # Copy kernel image
     if [ -f "$work_dir/arch/arm64/boot/Image" ]; then
         cp "$work_dir/arch/arm64/boot/Image" "$dt_tool/AIK/split_img/boot.img-kernel"
         print_info "Kernel image copied to AIK"
     else
-        print_error "Kernel image not found"
+        print_error "Kernel image not found at $work_dir/arch/arm64/boot/Image"
         return 1
     fi
 }
@@ -240,18 +366,27 @@ clean_build() {
     print_step "Starting clean build..."
     
     # Clean source
-    make ${ARGS} clean && make ${ARGS} mrproper
+    make ARCH="$ARCH" distclean 2>/dev/null || true
+    make ARCH="$ARCH" mrproper 2>/dev/null || true
     lpos_defaults
     
     # Build enforcing version
     export SELINUX_STATUS="Enforcing"
-    build_kernel "n" "n"
-    packing "$SELINUX_STATUS" "n"
+    if build_kernel "n" "n"; then
+        packing "$SELINUX_STATUS" "n"
+    else
+        print_error "Enforcing build failed"
+        return 1
+    fi
     
-    # Build permissive version
-    export SELINUX_STATUS="Permissive" 
-    build_kernel "y" "n"
-    packing "$SELINUX_STATUS" "n"
+    # Build permissive version  
+    export SELINUX_STATUS="Permissive"
+    if build_kernel "y" "n"; then
+        packing "$SELINUX_STATUS" "n"
+    else
+        print_error "Permissive build failed"
+        return 1
+    fi
     
     # Create final zip
     create_flashable_zip ""
@@ -264,17 +399,21 @@ dirty_build() {
     print_step "Starting dirty build..."
     
     export SELINUX_STATUS="Enforcing"
-    build_kernel "n" "n"
-    packing "$SELINUX_STATUS" "n"
-    
-    print_success "Dirty build completed"
+    if build_kernel "n" "n"; then
+        packing "$SELINUX_STATUS" "n"
+        print_success "Dirty build completed"
+    else
+        print_error "Dirty build failed"
+        return 1
+    fi
 }
 
 # Deep clean
 deep_clean() {
     print_step "Performing deep clean..."
     
-    make ${ARGS} clean && make ${ARGS} mrproper
+    make ARCH="$ARCH" distclean 2>/dev/null || true
+    make ARCH="$ARCH" mrproper 2>/dev/null || true
     lpos_defaults
     
     # Clean output directory
@@ -290,8 +429,9 @@ deep_clean() {
 build_ksu() {
     print_step "Setting up KernelSU..."
     
-    # Clone KernelSU-next
+    # Clone KernelSU-next if needed
     if [ ! -d "KernelSU-Next" ]; then
+        print_info "Cloning KernelSU-Next..."
         if git clone https://github.com/GoRhanHee/KernelSU-Next.git; then
             print_info "KernelSU-Next cloned successfully"
         else
@@ -303,34 +443,69 @@ build_ksu() {
     # Build KSU enforcing
     print_step "Building KernelSU Enforcing..."
     export SELINUX_STATUS="Enforcing"
-    build_kernel "n" "y"
-    packing "$SELINUX_STATUS" "y"
+    if build_kernel "n" "y"; then
+        packing "$SELINUX_STATUS" "y"
+    else
+        print_error "KSU Enforcing build failed"
+        return 1
+    fi
     
     # Build KSU permissive
     print_step "Building KernelSU Permissive..."
     export SELINUX_STATUS="Permissive"
-    build_kernel "y" "y"
-    packing "$SELINUX_STATUS" "y"
+    if build_kernel "y" "y"; then
+        packing "$SELINUX_STATUS" "y"
+    else
+        print_error "KSU Permissive build failed"
+        return 1
+    fi
     
     # Create KSU zip
     create_flashable_zip "KSU"
     
-    # Clean up
-    deep_clean
-    
     print_success "KernelSU build completed"
+}
+
+# Show help
+show_help() {
+    echo -e "${CYAN}LPoS Kernel Build Script - Fixed Version${NC}"
+    echo ""
+    echo "Usage: $0 [OPTION]"
+    echo ""
+    echo "Options:"
+    echo "  -c, --clean         Perform clean build (both enforcing and permissive)"
+    echo "  -d, --dirty         Perform dirty build (enforcing only)"  
+    echo "  -x, --clean-source  Deep clean source tree"
+    echo "  -k, --kernelsu      Build with KernelSU support"
+    echo "  -h, --help          Show this help message"
+    echo ""
+    echo "Toolchain Requirements:"
+    echo "  - aarch64-linux-gnu-gcc"
+    echo "  - clang"
+    echo "  - ld.lld"
+    echo "  - Directory structure:"
+    echo "    ./toolchain/bin/aarch64-linux-gnu-*"
+    echo "    ./clang/bin/clang"
+    echo ""
+    echo "Examples:"
+    echo "  $0 --clean          # Clean build with both SELinux modes"
+    echo "  $0 --kernelsu       # Build with KernelSU support"
+    echo "  $0 --dirty          # Quick dirty build"
 }
 
 # Main execution
 main() {
-    print_step "=== LPoS Kernel Build Script ==="
+    print_step "=== LPoS Kernel Build Script - Fixed Version ==="
     print_info "Kernel: $KERNEL_NAME $KERNEL_VERSION"
     print_info "Device: $DEVICE"
     print_info "Architecture: $ARCH"
     print_info "Build Date: $current_datetime"
     
     # Initialize build environment
-    initialize_build
+    if ! initialize_build; then
+        print_error "Build environment initialization failed"
+        exit 1
+    fi
     
     # Parse command line arguments
     case "${1:-}" in
@@ -356,25 +531,6 @@ main() {
     esac
     
     print_success "Build process completed successfully!"
-}
-
-# Help function
-show_help() {
-    echo -e "${CYAN}LPoS Kernel Build Script${NC}"
-    echo ""
-    echo "Usage: $0 [OPTION]"
-    echo ""
-    echo "Options:"
-    echo "  -c, --clean         Perform clean build (both enforcing and permissive)"
-    echo "  -d, --dirty         Perform dirty build (enforcing only)"  
-    echo "  -x, --clean-source  Deep clean source tree"
-    echo "  -k, --kernelsu      Build with KernelSU support"
-    echo "  -h, --help          Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0 --clean          # Clean build with both SELinux modes"
-    echo "  $0 --kernelsu       # Build with KernelSU support"
-    echo "  $0 --dirty          # Quick dirty build"
 }
 
 # Run main function
