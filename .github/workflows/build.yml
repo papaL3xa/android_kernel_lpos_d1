@@ -63,11 +63,6 @@ jobs:
           export PATH=$PWD/toolchain/bin:$PATH
           bash build_kernel.sh -c
 
-      - name: Building LPoS + KernelSU
-        run: |
-          export PATH=$PWD/toolchain/bin:$PATH
-          bash build_kernel.sh -k
-
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
