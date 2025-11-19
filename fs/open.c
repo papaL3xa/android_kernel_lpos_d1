@@ -34,10 +34,6 @@
 
 #include "internal.h"
 
-#ifdef CONFIG_KSU
-#include <ksu_hook.h>
-#endif
-
 #ifdef CONFIG_SECURITY_DEFEX
 #include <linux/defex.h>
 #endif
